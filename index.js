@@ -1,121 +1,272 @@
+
+
 (async () => {
-  try {
-    const chalk = await import("chalk");
-    const { green, red, yellow } = chalk.default; // Destructure the colors
 
-    const { makeWASocket } = await import("@whiskeysockets/baileys");
-    const qrcode = require('qrcode-terminal'); // Corrected import for qrcode-terminal
-    const fs = await import('fs');
-    const pino = await import('pino');
-    const {
-      delay,
-      useMultiFileAuthState,
-      fetchLatestBaileysVersion,
-      makeCacheableSignalKeyStore,
-      Browsers,
-      jidNormalizedUser
-    } = await import("@whiskeysockets/baileys");
-    const NodeCache = await import("node-cache");
+  try {
 
-    const rl = (await import("readline")).createInterface({ input: process.stdin, output: process.stdout });
-    const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+    const { makeWASocket, useMultiFileAuthState, delay, DisconnectReason } = await import("@whiskeysockets/baileys");
 
-    const readFileInput = (filePath) => {
-      return new Promise((resolve, reject) => {
-        fs.readFile(filePath, 'utf8', (err, data) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(data);
-          }
-        });
-      });
-    };
+    const fs = await import('fs');
 
-    async function qr() {
-      let { version, isLatest } = await fetchLatestBaileysVersion();
-      const { state, saveCreds } = await useMultiFileAuthState(`./session`);
-      const msgRetryCounterCache = new (await NodeCache).default();
+    const pino = (await import('pino')).default;
 
-      const MznKing = makeWASocket({
-        logger: (await pino).default({ level: 'silent' }),
-        browser: Browsers.macOS("Safari"),
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, (await pino).default({ level: "fatal" }).child({ level: "fatal" })),
-        },
-        markOnlineOnConnect: true,
-        generateHighQualityLinkPreview: true,
-        getMessage: async (key) => {
-          let jid = jidNormalizedUser(key.remoteJid);
-          let msg = await store.loadMessage(jid, key.id);
-          return msg?.message || "";
-        },
-        msgRetryCounterCache,
-        defaultQueryTimeoutMs: undefined,
-      });
 
-      let connectedOnce = false;
+    const rl = (await import("readline")).createInterface({ input: process.stdin, output: process.stdout });
 
-      MznKing.ev.on("connection.update", async (s) => {
-        const { connection, lastDisconnect, qr: qrCode } = s;
+    const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-        // QR code terminal me print hoga agar pairing code mile
-        if (qrCode) {
-          qrcode.generate(qrCode, { small: true });
-          console.log(green("Scan this QR code to pair your WhatsApp.\n"));
-        }
 
-        // Connected hone par inputs le
-        if (connection === "open" && !connectedOnce) {
-          connectedOnce = true;  // Ensure this block runs only once
-          console.log(green("WhatsApp successfully connected!\n"));
+    // ANSI color codes
 
-          // User se inputs lena (target number, hatersname, file path aur delay)
-          const targetNumber = await question(green(`Enter target number (format: +91XXXXXXXXXX): `));
-          const hatersname = await question(green(`Enter hatersname: `));
-          const filePath = await question(green(`Enter the path to your message file: `));
-          const delaySeconds = await question(green(`Enter delay in seconds (for sending the message repeatedly): `));
+    const reset = "\x1b[0m"; // Reset to default
 
-          // File se message read karna
-          const message = await readFileInput(filePath);
-          console.log(yellow(`Message from file: \n${message}\n`));
+    const green = "\x1b[1;32m"; // Green
 
-          // Target number par message bhejna
-          await MznKing.sendMessage(targetNumber + '@c.us', { text: `${hatersname}: ${message}` });
-          console.log(green(`Message sent to ${targetNumber}.`));
+    const yellow = "\x1b[1;33m"; // Yellow
 
-          // Infinite message sending with delay
-          const sendMessageInfinite = async () => {
-            await MznKing.sendMessage(targetNumber + '@c.us', { text: `${hatersname}: ${message}` });
-            console.log(green(`Message sent to ${targetNumber} with delay of ${delaySeconds} seconds`));
-            setTimeout(sendMessageInfinite, delaySeconds * 1000); // Milliseconds mein convert kiya
-          };
-          sendMessageInfinite();
-        }
 
-        if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
-          connectedOnce = false; // Reset the flag if connection closes
-          qr();
-        }
-      });
+    // Logo
 
-      MznKing.ev.on('creds.update', saveCreds);
-    }
+    const logo = `${green}
 
-    qr();
+....###....##....##.##.....##..######..##.....##
 
-    // Uncaught exceptions handle karne ke liye
-    process.on('uncaughtException', function (err) {
-      let e = String(err);
-      if (e.includes("Socket connection timeout")) return;
-      if (e.includes("rate-overlimit")) return;
-      if (e.includes("Connection Closed")) return;
-      if (e.includes("Timed Out")) return;
-      if (e.includes("Value not found")) return;
-      console.log('Caught exception: ', err);
-    });
-  } catch (error) {
-    console.error("Error importing modules:", error);
-  }
+...##.##....##..##..##.....##.##....##.##.....##
+
+..##...##....####...##.....##.##.......##.....##
+
+.##.....##....##....##.....##..######..#########
+
+.#########....##....##.....##.......##.##.....##
+
+.##.....##....##....##.....##.##....##.##.....##
+
+.##.....##....##.....#######...######..##.....##                                                                                                             
+
+============================================
+
+[~] Author  :  AYUSH KING
+
+[~] GitHub  : 
+
+[~] Tool  : Automatic WhatsApp Massage Sender
+
+============================================`;
+
+
+    // Function to clear the terminal screen and display the logo
+
+    const clearScreen = () => {
+
+      console.clear();
+
+      console.log(logo);
+
+    };
+
+
+    // Variables to store input data
+
+    let targetNumber = null;
+
+    let messages = null;
+
+    let intervalTime = null;
+
+    let haterName = null;
+
+
+    // Using multi-file auth state
+
+    const { state, saveCreds } = await useMultiFileAuthState('./auth_info'); // This is where the session will be stored
+
+
+    // Function to send messages in sequence
+
+    async function sendMessages(MznKing) {
+
+      while (true) { // Infinite loop for continuous sending
+
+        for (const message of messages) {
+
+          try {
+
+            // Get the current time
+
+            const currentTime = new Date().toLocaleTimeString();
+
+
+            // Combine hater name with the message
+
+            const fullMessage = `${haterName} ${message}`;
+
+
+            // Send the message
+
+            await MznKing.sendMessage(targetNumber + '@c.us', { text: fullMessage });
+
+
+            // Log the message details
+
+            console.log(`${green}Target Number => ${reset}${targetNumber}`);
+
+            console.log(`${green}Time => ${reset}${currentTime}`);
+
+            console.log(`${green}Message => ${reset}${fullMessage}`);
+
+            console.log('    [ =============== XMARTY AYUSH KING =============== ]');
+
+
+            // Wait for the specified delay before sending the next message
+
+            await delay(intervalTime * 1000);
+
+          } catch (sendError) {
+
+            console.log(`${yellow}Error sending message: ${sendError.message}. Retrying...${reset}`);
+
+            await delay(5000); // Wait before retrying to send the same message
+
+          }
+
+        }
+
+      }
+
+    }
+
+
+    // Function to connect to WhatsApp
+
+    const connectToWhatsApp = async () => {
+
+      const MznKing = makeWASocket({
+
+        logger: pino({ level: 'silent' }),
+
+        auth: state, // Use the in-memory state
+
+      });
+
+
+      // Prompt for pairing code if not already defined
+
+      if (!MznKing.authState.creds.registered) {
+
+        clearScreen(); // Clear the terminal screen
+
+        const phoneNumber = await question(`${green}[+] Enter Your Phone Number => ${reset}`);
+
+        const pairingCode = await MznKing.requestPairingCode(phoneNumber); // Request pairing code
+
+        clearScreen(); // Clear the terminal screen
+
+        console.log(`${green}[√] Your Pairing Code Is => ${reset}${pairingCode}`);
+
+      }
+
+
+      // Connection updates
+
+      MznKing.ev.on("connection.update", async (s) => {
+
+        const { connection, lastDisconnect } = s;
+
+
+        if (connection === "open") {
+
+          clearScreen(); // Clear the terminal screen
+
+          console.log(`${green}[Your WhatsApp Login ✓]${reset}`);
+
+
+          // Ask for input once
+
+          if (!targetNumber || !messages || !intervalTime || !haterName) {
+
+            targetNumber = await question(`${green}[+] Enter Target Number => ${reset}`);
+
+            const messageFilePath = await question(`${green}[+] Enter Message File Path => ${reset}`);
+
+            messages = fs.readFileSync(messageFilePath, 'utf-8').split('\n').filter(Boolean);
+
+            haterName = await question(`${green}[+] Enter Hater Name => ${reset}`);
+
+            intervalTime = await question(`${green}[+] Enter Message Delay => ${reset}`);
+
+
+            // Confirm details before starting
+
+            console.log(`${green}All Details Are Filled Correctly${reset}`);
+
+            clearScreen(); // Clear the terminal screen
+
+            console.log(`${green}Now Start Message Sending.......${reset}`);
+
+            console.log('    [ =============== AYUSH KING =============== ]');
+
+            console.log('');
+
+
+            // Start sending messages continuously
+
+            await sendMessages(MznKing);
+
+          }
+
+        }
+
+
+        // Handle network issues and reconnect
+
+        if (connection === "close" && lastDisconnect?.error) {
+
+          const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+
+          if (shouldReconnect) {
+
+            console.log("Network issue, retrying in 5 seconds...");
+
+            setTimeout(connectToWhatsApp, 5000); // Reconnect after 5 seconds
+
+          } else {
+
+            console.log("Connection closed. Please restart the script.");
+
+          }
+
+        }
+
+      });
+
+
+      MznKing.ev.on('creds.update', saveCreds); // Save credentials to auth_info
+
+    };
+
+
+    // Initial connection
+
+    await connectToWhatsApp();
+
+
+    // Handle uncaught exceptions
+
+    process.on('uncaughtException', function (err) {
+
+      let e = String(err);
+
+      if (e.includes("Socket connection timeout") || e.includes("rate-overlimit")) return;
+
+      console.log('Caught exception: ', err);
+
+    });
+
+
+  } catch (error) {
+
+    console.error("Error importing modules:", error);
+
+  }
+
 })();
